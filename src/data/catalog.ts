@@ -1,6 +1,12 @@
-import type { Treatment } from '@/types/domain';
+import type { Clinic, Treatment } from '@/types/domain';
 
 export const CITY_NAME = 'Iligan City';
+
+export const CLINIC: Clinic = {
+  name: 'Hilotcare',
+  address: '12 Andres Bonifacio Avenue',
+  city: 'Poblacion',
+};
 
 export const BARANGAYS = [
   'Abuno',
@@ -70,6 +76,7 @@ export const TREATMENTS: Treatment[] = [
     hourlyRate: 580,
     packagePrices: { 60: 580 },
     focus: ['Muscle fatigue', 'Tension', 'Back and shoulders'],
+    image: require('../../assets/services/traditional_hilot.png'),
   },
   {
     id: 'tr_ventosa',
@@ -82,6 +89,7 @@ export const TREATMENTS: Treatment[] = [
     hourlyRate: 500,
     packagePrices: { 60: 500 },
     focus: ['Back', 'Shoulders', 'Heaviness'],
+    image: require('../../assets/services/ventosa.png'),
   },
   {
     id: 'tr_swedish',
@@ -94,6 +102,7 @@ export const TREATMENTS: Treatment[] = [
     hourlyRate: 400,
     packagePrices: { 60: 400 },
     focus: ['Relaxation', 'Light tension', 'Sleep'],
+    image: require('../../assets/services/swedish.png'),
   },
   {
     id: 'tr_deep',
@@ -106,6 +115,7 @@ export const TREATMENTS: Treatment[] = [
     hourlyRate: 460,
     packagePrices: { 30: 230, 45: 420 },
     focus: ['Chronic tightness', 'Neck', 'Legs'],
+    image: require('../../assets/services/deep.png'),
     caution: 'Skip this with a fresh injury, fever, or pregnancy.',
   },
   {
@@ -119,6 +129,7 @@ export const TREATMENTS: Treatment[] = [
     hourlyRate: 500,
     packagePrices: { 60: 500 },
     focus: ['Lower back', 'Hips', 'Legs'],
+    image: require('../../assets/services/prenatal.png'),
     caution: 'Write how many weeks you are in the visit note.',
   },
   {
@@ -132,6 +143,7 @@ export const TREATMENTS: Treatment[] = [
     hourlyRate: 540,
     packagePrices: { 80: 720 },
     focus: ['Assessment', 'Targeted relief', 'Full body'],
+    image: require('../../assets/services/combo.png'),
   },
   {
     id: 'tr_foot',
@@ -144,6 +156,7 @@ export const TREATMENTS: Treatment[] = [
     hourlyRate: 500,
     packagePrices: { 30: 250 },
     focus: ['Feet', 'Lower legs', 'Short visit'],
+    image: require('../../assets/services/foot.png'),
   },
   {
     id: 'tr_sports',
@@ -156,21 +169,42 @@ export const TREATMENTS: Treatment[] = [
     hourlyRate: 500,
     packagePrices: { 45: 420, 60: 500 },
     focus: ['Legs', 'Hips', 'Shoulders'],
+    image: require('../../assets/services/sports.png'),
     caution: 'Skip this the day after a sprain, or if you have a fever.',
   },
 ];
 
+let treatmentOverride: Treatment[] | null = null;
+let barangayOverride: string[] | null = null;
+
+export function setLiveCatalog(input: { treatments?: Treatment[] | null; barangays?: string[] | null }) {
+  if (input.treatments && input.treatments.length > 0) treatmentOverride = input.treatments;
+  if (input.barangays && input.barangays.length > 0) barangayOverride = input.barangays;
+}
+
+export function activeTreatments() {
+  return (treatmentOverride ?? TREATMENTS).filter((treatment) => treatment.active !== false);
+}
+
+export function activeBarangays() {
+  return barangayOverride ?? [...BARANGAYS];
+}
+
+export function treatmentImage(id: string) {
+  return TREATMENTS.find((treatment) => treatment.id === id)?.image ?? TREATMENTS[0].image;
+}
+
 export function getTreatment(id: string) {
-  return TREATMENTS.find((treatment) => treatment.id === id) ?? null;
+  return activeTreatments().find((treatment) => treatment.id === id) ?? null;
 }
 
 export function canonicalBarangay(input: string) {
   const trimmed = input.trim();
-  return BARANGAYS.find((barangay) => barangay.toLowerCase() === trimmed.toLowerCase()) ?? trimmed;
+  return activeBarangays().find((barangay) => barangay.toLowerCase() === trimmed.toLowerCase()) ?? trimmed;
 }
 
 export function isCoveredBarangay(barangay: string) {
-  return BARANGAYS.some((item) => item.toLowerCase() === barangay.trim().toLowerCase());
+  return activeBarangays().some((item) => item.toLowerCase() === barangay.trim().toLowerCase());
 }
 
 export function asBarangay(value: string, fallback = 'Poblacion') {

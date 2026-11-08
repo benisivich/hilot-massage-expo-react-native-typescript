@@ -1,6 +1,6 @@
-import { CITY_NAME, canonicalBarangay, isCoveredBarangay } from '@/data/catalog';
+import { CITY_NAME, canonicalBarangay, getTreatment, isCoveredBarangay } from '@/data/catalog';
 import { isFutureExpiry, isPastSlot, inThisWeek, weekdayIndex } from '@/lib/format';
-import type { Booking, PayMethod, ServiceMode, SessionStatus, Therapist, Treatment } from '@/types/domain';
+import type { Booking, Clinic, PayMethod, ServiceMode, SessionStatus, Therapist, Treatment } from '@/types/domain';
 
 export const PLATFORM_FEE_PERCENT = 12;
 export const RESERVATION_PERCENT = 20;
@@ -53,27 +53,29 @@ export function slotTaken(bookings: Booking[], therapistId: string, date: string
 }
 
 export function blockReason(therapist: Therapist, input: SlotContext) {
-  if (therapist.verification !== 'verified') return 'License is not verified yet.';
-  if (!therapist.treatmentIds.includes(input.treatmentId)) return 'Does not offer this treatment.';
-  if (input.mode === 'home') {
-    if (!therapist.offersHome) return 'Does not offer home visits.';
-    if (!isCoveredBarangay(input.city)) return `Does not travel to ${input.city}, ${CITY_NAME}.`;
-    if (!therapist.travelZones.includes(input.city)) {
-      return therapist.travelZones.length === 0
-        ? 'This therapist has not added travel barangays yet.'
-        : `Does not travel to ${input.city}, ${CITY_NAME}.`;
-    }
-  } else if (!therapist.offersClinic || !therapist.clinic) {
-    return 'Does not keep a clinic.';
-  } else if (!isCoveredBarangay(therapist.clinic.city) || !therapist.clinic.name.trim() || therapist.clinic.address.trim().length < 4) {
-    return 'This therapist has not finished their clinic details.';
-  } else if (therapist.clinic.city !== input.city) {
-    return `Clinic is in ${therapist.clinic.city}, ${CITY_NAME}.`;
+  if (input.mode === 'home' && !isCoveredBarangay(input.city)) {
+    return input.city ? `${input.city} is outside ${CITY_NAME}.` : 'Choose a barangay.';
+  }
+  if (input.mode === 'clinic' && input.city && !isCoveredBarangay(input.city)) {
+    return `The clinic is outside ${CITY_NAME}.`;
+  }
+  if (input.mode === 'home' && !therapist.offersHome) return 'Home visits are turned off for this therapist.';
+  if (input.mode === 'clinic' && !therapist.offersClinic) return 'This therapist is not at the clinic.';
+  if (therapist.suspended) return 'This therapist is suspended.';
+  if (therapist.verification !== 'verified') return 'This therapist is not approved yet.';
+  if (!therapist.treatmentIds.includes(input.treatmentId)) return 'Does not offer this service.';
+  const treatment = getTreatment(input.treatmentId);
+  if (input.mode === 'home' && treatment?.offersHome === false) return 'This service is clinic only.';
+  if (input.mode === 'clinic' && treatment?.offersClinic === false) return 'This service is home visits only.';
+  if (input.mode === 'home' && therapist.travelZones.length > 0 && !therapist.travelZones.includes(input.city)) {
+    return `Does not travel to ${input.city}.`;
   }
   if (input.date && input.time) {
     if (isPastSlot(input.date, input.time)) return 'That time has already passed.';
-    const open = therapist.weeklySlots[String(weekdayIndex(input.date))] ?? [];
-    if (!open.includes(input.time)) return 'Outside their posted hours.';
+    const postsHours = Object.values(therapist.weeklySlots).some((slots) => slots.length > 0);
+    if (postsHours && !(therapist.weeklySlots[String(weekdayIndex(input.date))] ?? []).includes(input.time)) {
+      return 'Outside this therapist’s posted hours.';
+    }
     if (slotTaken(input.bookings, therapist.id, input.date, input.time)) return 'Already booked at this time.';
   }
   return null;
@@ -86,12 +88,21 @@ export function eligibleTherapists(input: SlotContext & { therapists: Therapist[
     .sort((a, b) => b.rating - a.rating || b.reviewCount - a.reviewCount);
 }
 
+export function clinicReady(clinic: Clinic | null | undefined) {
+  return Boolean(
+    clinic && clinic.name.trim().length >= 2 && clinic.address.trim().length >= 8 && isCoveredBarangay(clinic.city),
+  );
+}
+
 export function effectiveLocation(
   draft: { mode: ServiceMode; city: string; otherCity: string; address: string },
-  therapist: Therapist | null,
+  clinic: Clinic | null,
 ) {
-  if (draft.mode === 'clinic' && therapist?.clinic) {
-    return { city: therapist.clinic.city, address: therapist.clinic.address };
+  if (draft.mode === 'clinic') {
+    if (clinic && isCoveredBarangay(clinic.city)) {
+      return { city: canonicalBarangay(clinic.city), address: clinic.address.trim() };
+    }
+    return { city: '', address: '' };
   }
   return {
     city: canonicalBarangay(draft.otherCity.trim() || draft.city),
@@ -99,39 +110,22 @@ export function effectiveLocation(
   };
 }
 
-export function validateArea(input: {
-  mode: ServiceMode;
-  city: string;
-  address: string;
-  treatmentId: string;
-  therapists: Therapist[];
-  bookings: Booking[];
-  onlyId?: string | null;
-}) {
+export function validateArea(input: { mode: ServiceMode; city: string; address: string; clinic?: Clinic | null }) {
+  if (input.mode === 'clinic') {
+    if (!clinicReady(input.clinic)) {
+      return 'Clinic visits use the clinic’s fixed address. A therapist adds that address once on their profile.';
+    }
+    return null;
+  }
   const city = canonicalBarangay(input.city);
   if (!city) return 'Choose a barangay.';
   if (!isCoveredBarangay(city)) {
     return `${city} is outside ${CITY_NAME}. Hilotcare visits stay inside the city barangays.`;
   }
-  if (input.mode === 'home' && input.address.trim().length < 8) {
+  if (input.address.trim().length < 8) {
     return 'Enter a street address so the therapist can travel to you.';
   }
-  const matches = eligibleTherapists({
-    therapists: input.therapists,
-    bookings: input.bookings,
-    treatmentId: input.treatmentId,
-    mode: input.mode,
-    city,
-    onlyId: input.onlyId,
-  });
-  if (matches.length > 0) return null;
-  if (input.onlyId) {
-    const therapist = input.therapists.find((item) => item.id === input.onlyId);
-    return therapist ? blockReason(therapist, { ...input, city }) ?? 'This therapist cannot take the visit.' : 'Choose a therapist.';
-  }
-  return input.mode === 'home'
-    ? `No verified therapist covers home visits for this treatment in ${city}, ${CITY_NAME}.`
-    : `No verified clinic offers this treatment in ${city}, ${CITY_NAME}.`;
+  return null;
 }
 
 export function validatePayment(input: {
@@ -141,6 +135,13 @@ export function validatePayment(input: {
   cardExpiry: string;
   cardCvc: string;
 }): { ok: true; last4: string } | { ok: false; message: string } {
+  if (input.payMethod === 'paypal') {
+    const email = input.wallet.trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return { ok: false, message: 'Enter the email address for your PayPal account.' };
+    }
+    return { ok: true, last4: email.split('@')[0].slice(-4) };
+  }
   if (input.payMethod === 'card') {
     const digits = input.cardNumber.replace(/\D/g, '');
     if (!/^\d{16}$/.test(digits)) {
@@ -161,11 +162,13 @@ export function validatePayment(input: {
   return { ok: true, last4: mobile.slice(-4) };
 }
 
-const REPORT_STATUSES: SessionStatus[] = ['assigned', 'confirmed', 'cancelled'];
+const REPORT_STATUSES: SessionStatus[] = ['assigned', 'confirmed', 'in_session', 'completed', 'cancelled'];
 
 export function buildReport(bookings: Booking[], therapistId: string, treatmentName: (id: string) => string) {
   const mine = bookings.filter((booking) => booking.therapistId === therapistId);
-  const settled = mine.filter((booking) => booking.status === 'confirmed' || booking.status === 'completed');
+  const settled = mine.filter(
+    (booking) => booking.status === 'confirmed' || booking.status === 'in_session' || booking.status === 'completed',
+  );
   const week = settled.filter((booking) => inThisWeek(booking.date));
   const gross = (rows: Booking[]) => rows.reduce((sum, booking) => sum + booking.amountPaid, 0);
   const fee = (rows: Booking[]) => rows.reduce((sum, booking) => sum + platformFee(booking.amountPaid), 0);

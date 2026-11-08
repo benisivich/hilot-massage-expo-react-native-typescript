@@ -1,0 +1,4 @@
+project_id = "hilot-massage"
+
+[functions.booking-email]
+verify_jwt = false

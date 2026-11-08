@@ -1,8 +1,8 @@
 import { Text, View } from 'react-native';
 
-import { BarangaySelect, Chip, Field, Kicker, Notice, PageTitle, Screen, ToggleRow } from '@/components/ui';
+import { Chip, Kicker, Notice, PageTitle, Screen, ToggleRow } from '@/components/ui';
 import { palette } from '@/constants/theme';
-import { BARANGAYS, CITY_NAME, MASTER_SLOTS } from '@/data/catalog';
+import { CITY_NAME, MASTER_SLOTS, activeBarangays } from '@/data/catalog';
 import { useApp } from '@/context/store';
 import { formatTime, WEEKDAY_NAMES } from '@/lib/format';
 
@@ -34,31 +34,32 @@ export default function ScheduleScreen() {
 
   return (
     <Screen tab>
-      <PageTitle title="Hours and zones" subtitle={`Home bookings only land in ${CITY_NAME} barangays you travel to, and only on hours you leave open.`} />
+      <PageTitle
+        title="Hours and zones"
+        subtitle={`Home visits stay inside the 44 ${CITY_NAME} barangays. Choose where you travel and which hours you open.`}
+      />
       <ToggleRow
         label="Home visits"
         detail="Travel to the client’s address."
         value={therapist.offersHome}
         onValueChange={(offersHome) => updateTherapist(therapist.id, { offersHome })}
       />
-      <ToggleRow
-        label="Clinic"
-        detail="Clients come to your room."
-        value={therapist.offersClinic}
-        onValueChange={(offersClinic) =>
-          updateTherapist(therapist.id, {
-            offersClinic,
-            clinic: therapist.clinic ?? { name: '', address: '', city: '' },
-          })
-        }
-      />
-      {therapist.offersHome && therapist.travelZones.length === 0 ? (
-        <Notice tone="warn">Add at least one travel zone or home bookings will not reach you.</Notice>
-      ) : null}
-      {slotCount === 0 ? <Notice tone="warn">Add at least one hour or you will not appear on the schedule.</Notice> : null}
+      <Notice tone="info">
+        Clinic visits use the Hilotcare address in Poblacion. Clients who choose Clinic are sent there automatically.
+      </Notice>
+      {therapist.travelZones.length === 0 ? (
+        <Notice tone="info">No barangays selected, so home visits can be booked in all 44. Select the ones you travel to, and other barangays are refused.</Notice>
+      ) : (
+        <Notice tone="info">Home visits are accepted only in the barangays you select here.</Notice>
+      )}
+      {slotCount === 0 ? (
+        <Notice tone="info">No hours selected, so any future time can be booked. Select hours, and only those times stay open.</Notice>
+      ) : (
+        <Notice tone="info">Clients can book only the hours you turn on, and only when that time is not already taken.</Notice>
+      )}
       <Kicker>Barangays you travel to</Kicker>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-        {BARANGAYS.map((barangay) => (
+        {activeBarangays().map((barangay) => (
           <Chip
             key={barangay}
             label={barangay}
@@ -67,25 +68,6 @@ export default function ScheduleScreen() {
           />
         ))}
       </View>
-      {therapist.offersClinic && therapist.clinic ? (
-        <View style={{ gap: 10 }}>
-          <Field
-            label="Clinic name"
-            value={therapist.clinic.name}
-            onChangeText={(name) => updateTherapist(therapist.id, { clinic: { ...therapist.clinic!, name } })}
-          />
-          <Field
-            label="Clinic address"
-            value={therapist.clinic.address}
-            onChangeText={(address) => updateTherapist(therapist.id, { clinic: { ...therapist.clinic!, address } })}
-          />
-          <BarangaySelect
-            label="Clinic barangay"
-            value={therapist.clinic.city}
-            onChange={(city) => updateTherapist(therapist.id, { clinic: { ...therapist.clinic!, city } })}
-          />
-        </View>
-      ) : null}
       <Kicker>Weekly hours</Kicker>
       {WEEKDAY_NAMES.map((name, index) => (
         <View key={name} style={{ gap: 8 }}>

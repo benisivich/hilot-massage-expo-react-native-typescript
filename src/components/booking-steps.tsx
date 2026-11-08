@@ -1,21 +1,15 @@
+import { useState } from 'react';
 import { Text, View } from 'react-native';
 
 import { TherapistRow, TreatmentCard } from '@/components/cards';
 import { BarangaySelect, Button, Chip, Choice, Field, Line, Notice } from '@/components/ui';
 import { palette } from '@/constants/theme';
-import { CITY_NAME, MASTER_SLOTS, TREATMENTS, getTreatment } from '@/data/catalog';
+import { CITY_NAME, MASTER_SLOTS, activeTreatments, getTreatment } from '@/data/catalog';
 import { useApp } from '@/context/store';
 import { formatDuration, formatTime, isPastSlot, peso, upcomingDates, weekdayIndex, WEEKDAYS } from '@/lib/format';
-import { METHOD_LABEL, modeSummary, zoneSummary } from '@/lib/labels';
-import {
-  MIN_RESERVATION,
-  RESERVATION_PERCENT,
-  blockReason,
-  effectiveLocation,
-  eligibleTherapists,
-  quoted,
-} from '@/lib/rules';
-import type { PayDraft, PayMethod } from '@/types/domain';
+import { modeSummary } from '@/lib/labels';
+import { blockReason, clinicReady, effectiveLocation, eligibleTherapists, quoted } from '@/lib/rules';
+import type { PayDraft } from '@/types/domain';
 
 export function BookingSteps({
   step,
@@ -28,10 +22,11 @@ export function BookingSteps({
   onChange: (patch: Partial<PayDraft>) => void;
   onAdvance?: (patch: Partial<PayDraft>) => void;
 }) {
-  const { therapists, bookings } = useApp();
+  const { therapists, bookings, clinic } = useApp();
+  const [showTherapists, setShowTherapists] = useState(false);
   const treatment = draft.treatmentId ? getTreatment(draft.treatmentId) : null;
   const chosen = !draft.preferAuto && draft.therapistId ? therapists.find((item) => item.id === draft.therapistId) ?? null : null;
-  const location = effectiveLocation(draft, draft.mode === 'clinic' ? chosen : null);
+  const location = effectiveLocation(draft, clinic);
   const matchBase = {
     therapists,
     bookings,
@@ -44,7 +39,7 @@ export function BookingSteps({
   if (step === 0) {
     return (
       <View style={{ gap: 10 }}>
-        {TREATMENTS.map((item) => (
+        {activeTreatments().map((item) => (
             <TreatmentCard
               key={item.id}
               treatment={item}
@@ -87,53 +82,38 @@ export function BookingSteps({
   }
 
   if (step === 2) {
-    const clinicLocked = draft.mode === 'clinic' && chosen?.clinic;
     return (
       <View style={{ gap: 14 }}>
         <View style={{ flexDirection: 'row', gap: 10 }}>
           <Choice label="Home" detail="They travel to you" selected={draft.mode === 'home'} onPress={() => onChange({ mode: 'home' })} />
-          <Choice label="Clinic" detail="You go to them" selected={draft.mode === 'clinic'} onPress={() => onChange({ mode: 'clinic' })} />
+          <Choice label="Clinic" detail="You go to the clinic" selected={draft.mode === 'clinic'} onPress={() => onChange({ mode: 'clinic' })} />
         </View>
         {chosen ? (
           <Notice tone="info">
-            {`Booking with ${chosen.name}. ${modeSummary(chosen)}. ${chosen.offersHome ? `Travels to ${zoneSummary(chosen.travelZones)}.` : ''}`}
+            {`Booking with ${chosen.name}. ${modeSummary(chosen)}. Home visits cover every barangay of ${CITY_NAME}.`}
           </Notice>
         ) : null}
-        {clinicLocked && chosen.clinic ? (
-          <Notice tone="good">{`This visit is at ${chosen.clinic.name}, ${chosen.clinic.address}, ${chosen.clinic.city}, ${CITY_NAME}.`}</Notice>
+        {draft.mode === 'clinic' ? (
+          clinicReady(clinic) ? (
+            <Notice tone="good">{`You will go to ${clinic.name}, ${clinic.address}, ${clinic.city}, ${CITY_NAME}.`}</Notice>
+          ) : (
+            <Notice tone="warn">
+              Clinic visits use one fixed address. A therapist adds it once on their profile, and you do not pick a barangay.
+            </Notice>
+          )
         ) : (
           <View style={{ gap: 10 }}>
             <BarangaySelect value={draft.city} onChange={(city) => onChange({ city, otherCity: '' })} />
             <Field label="City" value={CITY_NAME} onChangeText={() => undefined} editable={false} />
+            <Field
+              label="Street address"
+              value={draft.address}
+              onChangeText={(address) => onChange({ address })}
+              placeholder="House number and street"
+            />
           </View>
         )}
-        {draft.mode === 'home' ? (
-          <Field
-            label="Street address"
-            value={draft.address}
-            onChangeText={(address) => onChange({ address })}
-            placeholder="House number and street"
-          />
-        ) : null}
-        {!clinicLocked && draft.mode === 'clinic' ? (
-          <Notice tone="info">The clinic address appears once a therapist is assigned.</Notice>
-        ) : null}
-      </View>
-    );
-  }
-
-  if (step === 3 && treatment) {
-    return (
-      <View style={{ gap: 14 }}>
-        {chosen ? (
-          <Text
-            onPress={() => onChange({ preferAuto: true, therapistId: null })}
-            style={{ color: palette.palm, fontWeight: '700' }}>
-            {`Times for ${chosen.name}. See everyone who is free instead.`}
-          </Text>
-        ) : (
-          <Text style={{ color: palette.muted }}>Showing times when at least one verified therapist is free.</Text>
-        )}
+        <Text style={{ color: palette.muted }}>The next open time is selected. Tap another day or time if you want a different one.</Text>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
           {upcomingDates(7).map((iso) => {
             const day = Number(iso.slice(8));
@@ -162,14 +142,26 @@ export function BookingSteps({
             }
           }}
         />
+        {therapists.length === 0 ? (
+          <Notice tone="warn">Create a therapist account on this phone first. A time can be booked after that account exists.</Notice>
+        ) : null}
         {draft.date ? (
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
             {MASTER_SLOTS.map((time) => {
-              const open = eligibleTherapists({ ...matchBase, date: draft.date, time }).length > 0;
+              const selectedDate = draft.date ?? '';
+              const past = isPastSlot(selectedDate, time);
+              const open = therapists.length > 0 && !past && eligibleTherapists({ ...matchBase, date: selectedDate, time }).length > 0;
+              const label = past
+                ? `${formatTime(time)} · passed`
+                : therapists.length === 0
+                  ? formatTime(time)
+                  : open
+                    ? formatTime(time)
+                    : `${formatTime(time)} · full`;
               return (
                 <Chip
                   key={time}
-                  label={open ? formatTime(time) : `${formatTime(time)} · full`}
+                  label={label}
                   selected={draft.time === time}
                   onPress={() => {
                     if (open) onChange({ time });
@@ -183,50 +175,8 @@ export function BookingSteps({
     );
   }
 
-  if (step === 4 && treatment && draft.date && draft.time) {
-    const offering = therapists.filter((therapist) => therapist.treatmentIds.includes(treatment.id));
-    const ranked = offering
-      .map((therapist) => ({
-        therapist,
-        reason: blockReason(therapist, {
-          bookings,
-          treatmentId: treatment.id,
-          mode: draft.mode,
-          city: location.city,
-          date: draft.date,
-          time: draft.time,
-        }),
-      }))
-      .sort((a, b) => {
-        if (!a.reason && b.reason) return -1;
-        if (a.reason && !b.reason) return 1;
-        return b.therapist.rating - a.therapist.rating;
-      });
-    const freeCount = ranked.filter((item) => !item.reason).length;
-    return (
-      <View style={{ gap: 10 }}>
-        <Choice
-          label="Best available match"
-          detail={freeCount > 0 ? `${freeCount} verified ${freeCount === 1 ? 'therapist is' : 'therapists are'} free.` : 'No verified therapist is free at this time.'}
-          selected={draft.preferAuto}
-          onPress={() => onChange({ preferAuto: true })}
-        />
-        {ranked.map(({ therapist, reason }) => (
-          <TherapistRow
-            key={therapist.id}
-            therapist={therapist}
-            selected={!draft.preferAuto && draft.therapistId === therapist.id}
-            detail={reason ?? `${modeSummary(therapist)} · ${zoneSummary(therapist.travelZones)}`}
-            onPress={reason ? undefined : () => onChange({ therapistId: therapist.id, preferAuto: false })}
-          />
-        ))}
-      </View>
-    );
-  }
-
-  if (step === 5 && treatment && draft.duration) {
+  if (step === 3 && treatment && draft.duration) {
     const prices = quoted(treatment, draft.duration);
-    const due = draft.payFull || prices.balance === 0 ? prices.serviceTotal : prices.reservationFee;
     const assignee = draft.preferAuto
       ? eligibleTherapists({ ...matchBase, date: draft.date, time: draft.time })[0]
       : chosen;
@@ -234,65 +184,68 @@ export function BookingSteps({
       <View style={{ gap: 14 }}>
         <View style={{ gap: 8 }}>
           <Line label={treatment.name} value={formatDuration(draft.duration)} />
-          <Line label={draft.mode === 'home' ? 'Home visit' : 'Clinic'} value={`${location.city}, ${CITY_NAME}`} />
-          <Line label="Session price" value={peso(prices.serviceTotal)} strong />
-          <Line label="Due now" value={peso(due)} strong />
-          {prices.balance > 0 && !draft.payFull ? <Line label="Balance after the session" value={peso(prices.balance)} /> : null}
-          <Text style={{ color: palette.muted, lineHeight: 20 }}>
-            {`The reservation is ${RESERVATION_PERCENT}% or ${peso(MIN_RESERVATION)}, whichever is higher. Cancel more than 3 hours ahead for a refund. Inside 3 hours, the reservation fee is kept.`}
-          </Text>
-          {assignee ? <Text style={{ color: palette.ink }}>{draft.preferAuto ? `Hilotcare will assign ${assignee.name}.` : `You chose ${assignee.name}.`}</Text> : null}
-        </View>
-        {prices.balance > 0 ? (
-          <View style={{ flexDirection: 'row', gap: 10 }}>
-            <Choice label="Reservation" detail={peso(prices.reservationFee)} selected={!draft.payFull} onPress={() => onChange({ payFull: false })} />
-            <Choice label="Pay in full" detail={peso(prices.serviceTotal)} selected={draft.payFull} onPress={() => onChange({ payFull: true })} />
-          </View>
-        ) : (
-          <Notice tone="info">The reservation covers the whole session.</Notice>
-        )}
-        <View style={{ flexDirection: 'row', gap: 8 }}>
-          {(['gcash', 'maya', 'card'] as PayMethod[]).map((method) => (
-            <Chip key={method} label={METHOD_LABEL[method]} selected={draft.payMethod === method} onPress={() => onChange({ payMethod: method })} />
-          ))}
-        </View>
-        {draft.payMethod === 'card' ? (
-          <View style={{ gap: 10 }}>
-            <Field
-              label="Card number"
-              value={draft.cardNumber}
-              onChangeText={(cardNumber) => onChange({ cardNumber: cardNumber.replace(/[^\d ]/g, '').slice(0, 19) })}
-              placeholder="16-digit number"
-              keyboardType="number-pad"
-            />
-            <Field
-              label="Expiry"
-              value={draft.cardExpiry}
-              onChangeText={(text) => {
-                const digits = text.replace(/\D/g, '').slice(0, 4);
-                onChange({ cardExpiry: digits.length > 2 ? `${digits.slice(0, 2)}/${digits.slice(2)}` : digits });
-              }}
-              placeholder="MM/YY"
-              keyboardType="number-pad"
-            />
-            <Field
-              label="Security code"
-              value={draft.cardCvc}
-              onChangeText={(cardCvc) => onChange({ cardCvc: cardCvc.replace(/\D/g, '').slice(0, 3) })}
-              placeholder="123"
-              keyboardType="number-pad"
-              maxLength={3}
-            />
-          </View>
-        ) : (
-          <Field
-            label={`${METHOD_LABEL[draft.payMethod]} number`}
-            value={draft.wallet}
-            onChangeText={(wallet) => onChange({ wallet: wallet.replace(/\D/g, '').slice(0, 11) })}
-            placeholder="09XXXXXXXXX"
-            keyboardType="phone-pad"
+          <Line
+            label={draft.mode === 'home' ? 'Home visit' : 'Clinic'}
+            value={
+              draft.mode === 'clinic' && clinic.name.trim()
+                ? `${clinic.name}, ${clinic.address}, ${location.city}`
+                : `${location.city}, ${CITY_NAME}`
+            }
           />
-        )}
+          <Line label="Pay now" value={peso(prices.serviceTotal)} strong />
+          <Text style={{ color: palette.muted, lineHeight: 20 }}>
+            The full session price is charged now. Cancel more than 3 hours ahead for a refund. Inside 3 hours, a reservation fee is kept.
+          </Text>
+          {assignee ? (
+            <Text style={{ color: palette.ink }}>{draft.preferAuto ? `${assignee.name} will take this visit.` : `You chose ${assignee.name}.`}</Text>
+          ) : (
+            <Text style={{ color: palette.muted }}>A therapist is assigned when you pay.</Text>
+          )}
+          <Text onPress={() => setShowTherapists((open) => !open)} style={{ color: palette.palm, fontWeight: '700' }}>
+            {showTherapists ? 'Hide therapists' : 'Change therapist'}
+          </Text>
+          {showTherapists
+            ? therapists.filter((therapist) => therapist.treatmentIds.includes(treatment.id)).map((therapist) => {
+                const reason =
+                  draft.date && draft.time
+                    ? blockReason(therapist, {
+                        bookings,
+                        treatmentId: treatment.id,
+                        mode: draft.mode,
+                        city: location.city,
+                        date: draft.date,
+                        time: draft.time,
+                      })
+                    : 'Choose a time first.';
+                return (
+                  <TherapistRow
+                    key={therapist.id}
+                    therapist={therapist}
+                    selected={!draft.preferAuto && draft.therapistId === therapist.id}
+                    detail={reason ?? 'Free at this time'}
+                    onPress={
+                      reason
+                        ? undefined
+                        : () => {
+                            onChange({ therapistId: therapist.id, preferAuto: false });
+                            setShowTherapists(false);
+                          }
+                    }
+                  />
+                );
+              })
+            : null}
+          {showTherapists && therapists.every((therapist) => !therapist.treatmentIds.includes(treatment.id)) ? (
+            <Notice tone="warn">No therapist offers this service yet. They can turn it on from their profile.</Notice>
+          ) : null}
+        </View>
+        <Field
+          label="PayPal email"
+          value={draft.wallet}
+          onChangeText={(wallet) => onChange({ wallet: wallet.trim(), payMethod: 'paypal' })}
+          placeholder="name@email.com"
+          keyboardType="email-address"
+        />
         <Field
           label="Note for the therapist"
           value={draft.notes}
@@ -301,7 +254,7 @@ export function BookingSteps({
           multiline
           maxLength={180}
         />
-        <Notice tone="warn">Demo checkout. Use any future card or an 09 mobile number. Nothing is sent to a bank.</Notice>
+        <Notice tone="warn">Pay opens the PayPal sandbox. Sign in with the Personal sandbox account from the PayPal developer site. No real money is charged.</Notice>
       </View>
     );
   }

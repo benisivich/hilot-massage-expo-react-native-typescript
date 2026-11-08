@@ -2,10 +2,10 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { Alert, Text, View } from 'react-native';
 
-import { StatusPill, Timeline, VerifyPill } from '@/components/status';
-import { Button, Card, Empty, Kicker, Line, Notice, Screen } from '@/components/ui';
+import { CheckInCode, StatusPill, Timeline } from '@/components/status';
+import { Button, Card, Empty, Field, Kicker, Line, Notice, Screen } from '@/components/ui';
 import { palette } from '@/constants/theme';
-import { CITY_NAME, getTreatment } from '@/data/catalog';
+import { getTreatment } from '@/data/catalog';
 import { useApp } from '@/context/store';
 import { formatDate, formatDuration, formatTime, peso } from '@/lib/format';
 import { METHOD_LABEL, MODE_LABEL, PAYMENT_LABEL } from '@/lib/labels';
@@ -24,8 +24,12 @@ export default function BookingDetail() {
     acceptBooking,
     declineBooking,
     cancelBooking,
+    completeBooking,
+    checkIn,
+    unlockCheckIn,
   } = useApp();
   const [error, setError] = useState<string | null>(null);
+  const [code, setCode] = useState('');
   const booking = bookings.find((item) => item.id === id);
 
   if (!booking) {
@@ -49,8 +53,10 @@ export default function BookingDetail() {
   }
 
   const balance = booking.serviceTotal - booking.amountPaid;
-  const run = (result: { ok: boolean; message?: string }) => {
+  const run = async (pending: Promise<{ ok: boolean; message?: string }>) => {
+    const result = await pending;
     setError(result.ok ? null : result.message ?? 'Something went wrong.');
+    return result;
   };
 
   const footer = (
@@ -58,7 +64,7 @@ export default function BookingDetail() {
       {error ? <Text style={{ color: palette.clay, lineHeight: 20 }}>{error}</Text> : null}
       {isTherapist && booking.status === 'assigned' ? (
         <>
-          <Button label="Accept payment and confirm" onPress={() => run(acceptBooking(booking.id))} />
+          <Button label="Accept payment and confirm" onPress={() => void run(acceptBooking(booking.id))} />
           <Button
             label="Decline"
             variant="danger"
@@ -69,14 +75,47 @@ export default function BookingDetail() {
                   text: 'Decline',
                   style: 'destructive',
                   onPress: () => {
-                    const result = declineBooking(booking.id);
-                    run(result);
+                    void run(declineBooking(booking.id));
                   },
                 },
               ])
             }
           />
         </>
+      ) : null}
+      {isTherapist && booking.status === 'confirmed' ? (
+        <>
+          <Field
+            label="Safety code from the customer"
+            value={code}
+            onChangeText={(value) => setCode(value.replace(/\D/g, '').slice(0, 4))}
+            placeholder="4-digit code"
+            keyboardType="number-pad"
+            maxLength={4}
+          />
+          <Button
+            label="Check in"
+            onPress={() => {
+              void run(checkIn(booking.id, code)).then((result) => {
+                if (result.ok) Alert.alert('Checked in', result.message ?? 'The safety code matched.');
+              });
+            }}
+          />
+          {booking.checkInLocked ? (
+            <Button label="Unlock check-in" variant="secondary" onPress={() => unlockCheckIn(booking.id)} />
+          ) : null}
+        </>
+      ) : null}
+      {(isCustomer || isTherapist) && (booking.status === 'confirmed' || booking.status === 'in_session') ? (
+        <Button
+          label="Finished"
+          onPress={() =>
+            Alert.alert('Mark this session as finished?', 'Do this after the massage is done.', [
+              { text: 'Not yet', style: 'cancel' },
+              { text: 'Finished', onPress: () => void run(completeBooking(booking.id)) },
+            ])
+          }
+        />
       ) : null}
       {isCustomer && (booking.status === 'assigned' || booking.status === 'confirmed') ? (
         <Button
@@ -88,7 +127,7 @@ export default function BookingDetail() {
               {
                 text: 'Cancel visit',
                 style: 'destructive',
-                onPress: () => run(cancelBooking(booking.id)),
+                onPress: () => void run(cancelBooking(booking.id)),
               },
             ])
           }
@@ -98,8 +137,8 @@ export default function BookingDetail() {
   );
 
   const showFooter =
-    (isTherapist && booking.status === 'assigned') ||
-    (isCustomer && (booking.status === 'assigned' || booking.status === 'confirmed'));
+    (isTherapist && (booking.status === 'assigned' || booking.status === 'confirmed' || booking.status === 'in_session')) ||
+    (isCustomer && (booking.status === 'assigned' || booking.status === 'confirmed' || booking.status === 'in_session'));
 
   return (
     <Screen title={treatment?.name ?? 'Visit'} subtitle={`${formatDate(booking.date)} · ${formatTime(booking.time)}`} onBack={() => router.back()} footer={showFooter ? footer : undefined}>
@@ -109,22 +148,24 @@ export default function BookingDetail() {
       </View>
       <Kicker>Status</Kicker>
       <Timeline booking={booking} />
+      {isCustomer && (booking.status === 'confirmed' || booking.status === 'in_session') ? (
+        <>
+          <Kicker>Safety code</Kicker>
+          <Notice tone="info">Show this code to your therapist at the start of the session. They enter it to check you in.</Notice>
+          <CheckInCode code={booking.checkInCode} />
+        </>
+      ) : null}
+      {booking.status === 'in_session' ? <Notice tone="good">Checked in. Either of you can mark the session finished when the massage is done.</Notice> : null}
       <Card>
         <Line label={isTherapist ? 'Client' : 'Therapist'} value={isTherapist ? booking.customerName : therapist?.name ?? 'Assigned'} />
         <Line label="Length" value={formatDuration(booking.duration)} />
-        <Line label="Where" value={`${booking.address}, ${booking.city}, ${CITY_NAME}`} />
+        <Line
+          label="Where"
+          value={`${booking.address}${booking.barangay ? `, ${booking.barangay}` : ''}, ${booking.city}`}
+        />
         <Line label="Assignment" value={booking.assignedBy === 'auto' ? 'Best available match' : 'Chosen by the client'} />
         {booking.notes ? <Line label="Note" value={booking.notes} /> : null}
       </Card>
-      {therapist && isCustomer ? (
-        <Card>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}>
-            <Text style={{ color: palette.ink, fontWeight: '700', flex: 1 }}>{therapist.licenseNumber}</Text>
-            <VerifyPill status={therapist.verification} />
-          </View>
-          <Text style={{ color: palette.muted }}>{therapist.issuingBody}</Text>
-        </Card>
-      ) : null}
       {isTherapist && booking.status === 'confirmed' ? (
         <Notice tone="info">
           {`You net ${peso(therapistNet(booking.amountPaid))} after the ${PLATFORM_FEE_PERCENT}% Hilotcare fee.`}

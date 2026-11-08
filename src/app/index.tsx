@@ -5,29 +5,33 @@ import { Button, Field, Screen } from '@/components/ui';
 import { font, palette } from '@/constants/theme';
 import { useApp } from '@/context/store';
 import { replace } from '@/lib/nav';
+import { resendConfirmation } from '@/services/cloud';
 
-type Gate = 'start' | 'login' | 'register' | 'therapist' | 'therapist-register';
+type Gate = 'start' | 'choose' | 'login' | 'register' | 'confirm' | 'therapist' | 'therapist-register' | 'admin' | 'admin-register';
 
 export default function WelcomeScreen() {
-  const { role, customer, setRole, updateCustomer, registerTherapist, signInTherapist } = useApp();
+  const { role, setRole, registerCustomer, signInCustomer, registerTherapist, signInTherapist, registerAdmin, signInAdmin } = useApp();
   const [gate, setGate] = useState<Gate>('start');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
   const [mobile, setMobile] = useState('');
   const [confirm, setConfirm] = useState('');
+  const [pendingEmail, setPendingEmail] = useState('');
+  const [pendingRole, setPendingRole] = useState<'customer' | 'therapist' | 'admin'>('customer');
 
   useEffect(() => {
     if (role === 'customer') replace('/customer');
     if (role === 'therapist') replace('/therapist');
+    if (role === 'admin') replace('/admin');
   }, [role]);
 
-  const enter = (next: 'customer' | 'therapist') => {
+  const enter = (next: 'customer' | 'therapist' | 'admin') => {
     setRole(next);
-    replace(next === 'customer' ? '/customer' : '/therapist');
+    replace(next === 'customer' ? '/customer' : next === 'therapist' ? '/therapist' : '/admin');
   };
 
-  const signIn = () => {
+  const signIn = async () => {
     const cleanEmail = email.trim().toLowerCase();
     if (!cleanEmail.includes('@')) {
       Alert.alert('Check the form', 'Enter a valid email address.');
@@ -37,18 +41,22 @@ export default function WelcomeScreen() {
       Alert.alert('Check the form', 'Password must be at least 6 characters.');
       return;
     }
-    if (!customer.email) {
-      Alert.alert('Create an account', 'Register on this device first, then sign in with that email.');
-      return;
-    }
-    if (cleanEmail !== customer.email) {
-      Alert.alert('Check the form', 'That email does not match the account on this device.');
+    const result = await signInCustomer(cleanEmail, password);
+    if (!result.ok) {
+      if (result.message.includes('confirmation email')) {
+        setPendingEmail(cleanEmail);
+        setPendingRole('customer');
+        setGate('confirm');
+        void resendConfirmation(cleanEmail);
+        return;
+      }
+      Alert.alert(result.message.includes('verification email') ? 'Email not sent' : 'Check the form', result.message);
       return;
     }
     enter('customer');
   };
 
-  const signInTherapistAccount = () => {
+  const signInTherapistAccount = async () => {
     const cleanEmail = email.trim().toLowerCase();
     if (!cleanEmail.includes('@')) {
       Alert.alert('Check the form', 'Enter a valid email address.');
@@ -58,15 +66,47 @@ export default function WelcomeScreen() {
       Alert.alert('Check the form', 'Password must be at least 6 characters.');
       return;
     }
-    const result = signInTherapist(cleanEmail);
+    const result = await signInTherapist(cleanEmail, password);
     if (!result.ok) {
-      Alert.alert('Check the form', result.message);
+      if (result.message.includes('confirmation email')) {
+        setPendingEmail(cleanEmail);
+        setPendingRole('therapist');
+        setGate('confirm');
+        void resendConfirmation(cleanEmail);
+        return;
+      }
+      Alert.alert(result.message.includes('verification email') ? 'Email not sent' : 'Check the form', result.message);
       return;
     }
     enter('therapist');
   };
 
-  const createTherapist = () => {
+  const signInAdminAccount = async () => {
+    const cleanEmail = email.trim().toLowerCase();
+    if (!cleanEmail.includes('@')) {
+      Alert.alert('Check the form', 'Enter a valid email address.');
+      return;
+    }
+    if (password.length < 6) {
+      Alert.alert('Check the form', 'Password must be at least 6 characters.');
+      return;
+    }
+    const result = await signInAdmin(cleanEmail, password);
+    if (!result.ok) {
+      if (result.message.includes('confirmation email')) {
+        setPendingEmail(cleanEmail);
+        setPendingRole('admin');
+        setGate('confirm');
+        void resendConfirmation(cleanEmail);
+        return;
+      }
+      Alert.alert(result.message.includes('verification email') ? 'Email not sent' : 'Check the form', result.message);
+      return;
+    }
+    enter('admin');
+  };
+
+  const createAdmin = async () => {
     const cleanName = name.trim();
     const cleanEmail = email.trim().toLowerCase();
     if (cleanName.length < 2) {
@@ -85,15 +125,54 @@ export default function WelcomeScreen() {
       Alert.alert('Check the form', 'Passwords do not match.');
       return;
     }
-    const result = registerTherapist({ name: cleanName, email: cleanEmail });
+    const result = await registerAdmin({ name: cleanName, email: cleanEmail, password });
     if (!result.ok) {
-      Alert.alert('Check the form', result.message);
+      Alert.alert(result.message.includes('verification email') ? 'Email not sent' : 'Check the form', result.message);
+      return;
+    }
+    if (result.pendingEmail) {
+      setPendingEmail(result.pendingEmail);
+      setPendingRole('admin');
+      setGate('confirm');
+      return;
+    }
+    enter('admin');
+  };
+
+  const createTherapist = async () => {
+    const cleanName = name.trim();
+    const cleanEmail = email.trim().toLowerCase();
+    if (cleanName.length < 2) {
+      Alert.alert('Check the form', 'Enter your full name.');
+      return;
+    }
+    if (!cleanEmail.includes('@')) {
+      Alert.alert('Check the form', 'Enter a valid email address.');
+      return;
+    }
+    if (password.length < 6) {
+      Alert.alert('Check the form', 'Password must be at least 6 characters.');
+      return;
+    }
+    if (password !== confirm) {
+      Alert.alert('Check the form', 'Passwords do not match.');
+      return;
+    }
+    const result = await registerTherapist({ name: cleanName, email: cleanEmail, password });
+    if (!result.ok) {
+      Alert.alert(result.message.includes('verification email') ? 'Email not sent' : 'Check the form', result.message);
+      return;
+    }
+    if (result.pendingEmail) {
+      setPendingEmail(result.pendingEmail);
+      setPendingRole('therapist');
+      setGate('confirm');
       return;
     }
     enter('therapist');
   };
 
-  const createAccount = () => {
+  const createAccount = async () => {
     const cleanName = name.trim();
     const digits = mobile.replace(/\D/g, '');
     const cleanEmail = email.trim().toLowerCase();
@@ -117,21 +196,91 @@ export default function WelcomeScreen() {
       Alert.alert('Check the form', 'Passwords do not match.');
       return;
     }
-    updateCustomer({ name: cleanName, mobile: digits, email: cleanEmail });
+    const result = await registerCustomer({ name: cleanName, mobile: digits, email: cleanEmail, password });
+    if (!result.ok) {
+      Alert.alert(result.message.includes('verification email') ? 'Email not sent' : 'Check the form', result.message);
+      return;
+    }
+    if (result.pendingEmail) {
+      setPendingEmail(result.pendingEmail);
+      setPendingRole('customer');
+      setGate('confirm');
+      return;
+    }
     enter('customer');
+  };
+
+  const resendFromLogin = async (next: 'customer' | 'therapist' | 'admin') => {
+    const cleanEmail = email.trim().toLowerCase();
+    if (!cleanEmail.includes('@')) {
+      Alert.alert('Check the form', 'Enter the email address you used to create the account.');
+      return;
+    }
+    const result = await resendConfirmation(cleanEmail);
+    if (!result.ok) {
+      Alert.alert('Email not sent', result.message);
+      return;
+    }
+    setPendingEmail(cleanEmail);
+    setPendingRole(next);
+    setGate('confirm');
+  };
+
+  const finishVerification = async () => {
+    if (password.length < 6) {
+      Alert.alert('Check the form', 'Go back and enter the password you created, then tap I verified my email.');
+      return;
+    }
+    const result =
+      pendingRole === 'customer'
+        ? await signInCustomer(pendingEmail, password)
+        : pendingRole === 'therapist'
+          ? await signInTherapist(pendingEmail, password)
+          : await signInAdmin(pendingEmail, password);
+    if (!result.ok) {
+      if (result.message.includes('confirmation email')) {
+        Alert.alert('Not verified yet', 'Open the email, tap the verification link, then try again.');
+        return;
+      }
+      Alert.alert(result.message.includes('verification email') ? 'Email not sent' : 'Check the form', result.message);
+      return;
+    }
+    enter(pendingRole);
+  };
+
+  const resendEmail = async () => {
+    const result = await resendConfirmation(pendingEmail);
+    Alert.alert(
+      result.ok ? 'Email sent' : 'Email not sent',
+      result.ok ? `Another confirmation link was sent to ${pendingEmail}.` : result.message,
+    );
   };
 
   if (role) return null;
 
-  if (gate === 'start') {
+  if (gate === 'confirm') {
     return (
       <Screen
+        onBack={() =>
+          setGate(pendingRole === 'customer' ? 'register' : pendingRole === 'admin' ? 'admin-register' : 'therapist-register')
+        }
         footer={
           <>
-            <Button label="Get Started" onPress={() => setGate('login')} />
-            <Button label="Therapist sign in" variant="secondary" onPress={() => setGate('therapist')} />
+            <Button label="I verified my email" onPress={() => void finishVerification()} />
+            <Button label="Resend email" variant="secondary" onPress={() => void resendEmail()} />
           </>
         }>
+        <Text style={styles.title}>Verify your email</Text>
+        <Text style={styles.sub}>
+          A verification link was sent to {pendingEmail}. On this phone, open the Mail app, tap the Hilotcare link, come back here, and tap I verified my email. No one else has to approve the account.
+        </Text>
+      </Screen>
+    );
+  }
+
+  if (gate === 'start') {
+    return (
+      <Screen footer={<Button label="Get Started" onPress={() => setGate('choose')} />}>
         <View style={styles.hero}>
           <View style={styles.logo}>
             <View style={styles.head} />
@@ -145,9 +294,26 @@ export default function WelcomeScreen() {
     );
   }
 
+  if (gate === 'choose') {
+    return (
+      <Screen
+        onBack={() => setGate('start')}
+        footer={
+          <>
+            <Button label="Customer sign in" onPress={() => setGate('login')} />
+            <Button label="Therapist sign in" variant="secondary" onPress={() => setGate('therapist')} />
+            <Button label="Admin sign in" variant="ghost" onPress={() => setGate('admin')} />
+          </>
+        }>
+        <Text style={styles.title}>Sign in</Text>
+        <Text style={styles.sub}>Choose customer, therapist, or admin.</Text>
+      </Screen>
+    );
+  }
+
   if (gate === 'login') {
     return (
-      <Screen onBack={() => setGate('start')} avoidKeyboard footer={<Button label="Login" onPress={signIn} />}>
+      <Screen onBack={() => setGate('choose')} avoidKeyboard footer={<Button label="Login" onPress={signIn} />}>
         <Text style={styles.title}>Welcome back</Text>
         <Text style={styles.sub}>Sign in to book your next session</Text>
         <Field
@@ -169,11 +335,14 @@ export default function WelcomeScreen() {
           onPress={() =>
             Alert.alert(
               'Password help',
-              'Passwords are not saved on this device. Sign in with the email you used when you created the account.',
+              'Sign in with the email and password you chose when you created the account.',
             )
           }>
-          <Text style={styles.link}>Forgot password?</Text>
+          <Text style={styles.centeredLink}>Forgot password?</Text>
         </Pressable>
+        <Text style={styles.centeredLink} onPress={() => void resendFromLogin('customer')}>
+          Resend confirmation email
+        </Text>
         <Text style={styles.switchLine}>
           New to Hilotcare?{' '}
           <Text style={styles.link} onPress={() => setGate('register')}>
@@ -186,7 +355,7 @@ export default function WelcomeScreen() {
 
   if (gate === 'therapist') {
     return (
-      <Screen onBack={() => setGate('start')} avoidKeyboard footer={<Button label="Login" onPress={signInTherapistAccount} />}>
+      <Screen onBack={() => setGate('choose')} avoidKeyboard footer={<Button label="Login" onPress={signInTherapistAccount} />}>
         <Text style={styles.title}>Therapist desk</Text>
         <Text style={styles.sub}>Sign in with the email you registered</Text>
         <Field
@@ -203,12 +372,66 @@ export default function WelcomeScreen() {
           placeholder="Enter your password"
           secure
         />
+        <Text style={styles.centeredLink} onPress={() => void resendFromLogin('therapist')}>
+          Resend confirmation email
+        </Text>
         <Text style={styles.switchLine}>
           New therapist?{' '}
           <Text style={styles.link} onPress={() => setGate('therapist-register')}>
             Create Account
           </Text>
         </Text>
+      </Screen>
+    );
+  }
+
+  if (gate === 'admin') {
+    return (
+      <Screen onBack={() => setGate('choose')} avoidKeyboard footer={<Button label="Login" onPress={signInAdminAccount} />}>
+        <Text style={styles.title}>Admin</Text>
+        <Text style={styles.sub}>Only an admin account can open the clinic panel.</Text>
+        <Field
+          label="Email Address"
+          value={email}
+          onChangeText={setEmail}
+          placeholder="Enter your email"
+          keyboardType="email-address"
+        />
+        <Field
+          label="Password"
+          value={password}
+          onChangeText={setPassword}
+          placeholder="Enter your password"
+          secure
+        />
+        <Text style={styles.centeredLink} onPress={() => void resendFromLogin('admin')}>
+          Resend confirmation email
+        </Text>
+        <Text style={styles.switchLine}>
+          First admin?{' '}
+          <Text style={styles.link} onPress={() => setGate('admin-register')}>
+            Create Account
+          </Text>
+        </Text>
+      </Screen>
+    );
+  }
+
+  if (gate === 'admin-register') {
+    return (
+      <Screen onBack={() => setGate('admin')} avoidKeyboard footer={<Button label="Create Account" onPress={createAdmin} />}>
+        <Text style={styles.title}>Admin account</Text>
+        <Text style={styles.sub}>This login is separate from customers and therapists.</Text>
+        <Field label="Full name" value={name} onChangeText={setName} placeholder="Full name" />
+        <Field
+          label="Email Address"
+          value={email}
+          onChangeText={setEmail}
+          placeholder="Email Address"
+          keyboardType="email-address"
+        />
+        <Field label="Create Password" value={password} onChangeText={setPassword} placeholder="Create Password" secure />
+        <Field label="Confirm Password" value={confirm} onChangeText={setConfirm} placeholder="Confirm Password" secure />
       </Screen>
     );
   }
@@ -220,7 +443,7 @@ export default function WelcomeScreen() {
         avoidKeyboard
         footer={<Button label="Create Account" onPress={createTherapist} />}>
         <Text style={styles.title}>Therapist account</Text>
-        <Text style={styles.sub}>You will add your license and services next</Text>
+        <Text style={styles.sub}>Clinic staff can open an account right away and manage visits from the desk.</Text>
         <Field label="Full name" value={name} onChangeText={setName} placeholder="Full name" />
         <Field
           label="Email Address"
@@ -326,5 +549,6 @@ const styles = StyleSheet.create({
   title: { fontFamily: font.serif, color: palette.palm, fontSize: 34, lineHeight: 38 },
   sub: { color: palette.muted, fontSize: 15, marginTop: -6 },
   link: { color: palette.orange, fontWeight: '700', textAlign: 'right' },
+  centeredLink: { color: palette.orange, fontWeight: '700', textAlign: 'center' },
   switchLine: { color: palette.muted, textAlign: 'center', marginTop: 8 },
 });

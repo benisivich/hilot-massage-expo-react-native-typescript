@@ -1,15 +1,19 @@
-import { Text, View } from 'react-native';
+import { useState } from 'react';
+import { Alert, Text, View } from 'react-native';
 
-import { Card, Empty, Kicker, Line, PageTitle, Screen, Stat } from '@/components/ui';
+import { Button, Card, Empty, Kicker, Line, PageTitle, Screen, Stat } from '@/components/ui';
 import { font, palette } from '@/constants/theme';
 import { getTreatment } from '@/data/catalog';
 import { useApp } from '@/context/store';
-import { peso, thisWeekLabel } from '@/lib/format';
+import { exportCsv } from '@/lib/export-csv';
+import { peso, thisWeekLabel, toISODate } from '@/lib/format';
 import { STATUS_LABEL } from '@/lib/labels';
+import { reportCsv } from '@/lib/report-csv';
 import { buildReport, PLATFORM_FEE_PERCENT, therapistNet } from '@/lib/rules';
 
 export default function ReportsScreen() {
   const { bookings, activeTherapist } = useApp();
+  const [exporting, setExporting] = useState(false);
   if (!activeTherapist) {
     return (
       <Screen tab>
@@ -19,10 +23,35 @@ export default function ReportsScreen() {
   }
   const report = buildReport(bookings, activeTherapist.id, (id) => getTreatment(id)?.name ?? 'Session');
   const maxGross = Math.max(...report.byTreatment.map((item) => item.gross), 1);
+  const mine = bookings
+    .filter((booking) => booking.therapistId === activeTherapist.id)
+    .sort((a, b) => a.date.localeCompare(b.date) || a.time.localeCompare(b.time));
+
+  const exportReport = async () => {
+    if (exporting) return;
+    setExporting(true);
+    try {
+      const csv = reportCsv({ therapistName: activeTherapist.name || 'Therapist', bookings: mine, report });
+      await exportCsv(`hilotcare-report-${toISODate(new Date())}.csv`, csv);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'The report could not be exported.';
+      Alert.alert('Export failed', message);
+    } finally {
+      setExporting(false);
+    }
+  };
 
   return (
     <Screen tab>
       <PageTitle title="Reports" subtitle={`${thisWeekLabel()}. Clients pay the session price. Hilotcare keeps ${PLATFORM_FEE_PERCENT}%.`} />
+      <Button
+        label={exporting ? 'Preparing the file…' : 'Export report to CSV'}
+        variant="secondary"
+        disabled={exporting}
+        onPress={() => {
+          void exportReport();
+        }}
+      />
       <Card>
         <Kicker>Net this week</Kicker>
         <Text style={{ fontFamily: font.serif, fontSize: 40, color: palette.ink }}>{peso(report.weekNet)}</Text>

@@ -3,20 +3,13 @@ import { Text, View } from 'react-native';
 import { Pill } from '@/components/ui';
 import { palette } from '@/constants/theme';
 import { STATUS_LABEL } from '@/lib/labels';
-import type { Booking, SessionStatus, VerificationStatus } from '@/types/domain';
+import type { Booking, SessionStatus } from '@/types/domain';
 
-const FLOW: SessionStatus[] = ['assigned', 'confirmed'];
-
-export function VerifyPill({ status }: { status: VerificationStatus }) {
-  const label =
-    status === 'verified' ? 'Verified' : status === 'pending' ? 'In review' : status === 'rejected' ? 'Rejected' : 'Unverified';
-  const tone = status === 'verified' ? 'good' : status === 'pending' ? 'warn' : 'bad';
-  return <Pill label={label} tone={tone} />;
-}
+const FLOW: SessionStatus[] = ['assigned', 'confirmed', 'in_session', 'completed'];
 
 export function StatusPill({ status }: { status: SessionStatus }) {
   const tone =
-    status === 'cancelled' ? 'bad' : status === 'assigned' ? 'warn' : status === 'confirmed' ? 'good' : 'neutral';
+    status === 'cancelled' ? 'bad' : status === 'assigned' ? 'warn' : status === 'confirmed' || status === 'in_session' || status === 'completed' ? 'good' : 'neutral';
   return <Pill label={STATUS_LABEL[status]} tone={tone} />;
 }
 

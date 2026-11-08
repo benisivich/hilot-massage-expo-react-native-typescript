@@ -1,21 +1,24 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import type { Booking, Customer, Role, Therapist } from '@/types/domain';
+import type { Booking, Clinic, Customer, Role, Therapist } from '@/types/domain';
 
 const STORAGE_KEY = 'lunas-directory';
 
 export type SavedDirectory = {
   role: Role | null;
   customer: Customer;
+  customers?: Customer[];
   therapists: Therapist[];
   bookings: Booking[];
+  clinic?: Clinic;
+  activeCustomerId?: string | null;
   activeTherapistId?: string | null;
 };
 
 function isDirectory(value: unknown): value is SavedDirectory {
   if (!value || typeof value !== 'object') return false;
   const record = value as SavedDirectory;
-  return Boolean(record.customer?.id) && Array.isArray(record.therapists) && Array.isArray(record.bookings);
+  return record.customer != null && Array.isArray(record.therapists) && Array.isArray(record.bookings);
 }
 
 export async function loadDirectory() {

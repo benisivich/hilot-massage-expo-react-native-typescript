@@ -1,6 +1,5 @@
+import { CITY_NAME, CLINIC, activeTreatments } from '@/data/catalog';
 import type { Booking, Customer, Therapist } from '@/types/domain';
-
-export const CUSTOMER_ID = 'cust_mara';
 
 const SAMPLE_THERAPIST_IDS = new Set(['th_liza', 'th_paolo', 'th_amina', 'th_diego', 'th_rosa']);
 const SAMPLE_THERAPIST_NAMES = new Set([
@@ -26,35 +25,60 @@ export function blankTherapist(input: { name: string; email: string }): Therapis
     id: `th_${Date.now().toString(36)}`,
     name: input.name,
     email: input.email,
+    photo: '',
     title: '',
     bio: '',
     years: 0,
     rating: 0,
     reviewCount: 0,
-    treatmentIds: [],
-    verification: 'unverified',
-    verificationNote: 'Enter your license so clients can book you.',
+    treatmentIds: activeTreatments().map((treatment) => treatment.id),
+    verification: 'pending',
+    suspended: false,
+    validId: '',
+    certificate: '',
+    verificationNote: '',
     licenseNumber: '',
     issuingBody: '',
     licenseValidUntil: '',
     reviewedAt: null,
     offersHome: true,
-    offersClinic: false,
-    clinic: null,
+    offersClinic: true,
+    clinic: CLINIC,
     travelZones: [],
     weeklySlots: emptyWeeklySlots(),
   };
 }
 
-export function seedCustomer(): Customer {
+export function emptyCustomer(): Customer {
   return {
-    id: CUSTOMER_ID,
+    id: '',
     name: '',
     mobile: '',
     email: '',
+    photo: '',
     city: '',
+    barangay: '',
     address: '',
+    suspended: false,
   };
+}
+
+export function blankCustomer(input: { name: string; mobile: string; email: string }): Customer {
+  return {
+    id: `cust_${Date.now().toString(36)}`,
+    name: input.name.trim(),
+    mobile: input.mobile,
+    email: input.email.trim().toLowerCase(),
+    photo: '',
+    city: CITY_NAME,
+    barangay: '',
+    address: '',
+    suspended: false,
+  };
+}
+
+export function seedCustomer(): Customer {
+  return emptyCustomer();
 }
 
 export function seedBookings(): Booking[] {

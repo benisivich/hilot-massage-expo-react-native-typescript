@@ -3,9 +3,9 @@ import { FlatList, StyleSheet, View } from 'react-native';
 
 import { TherapistRow, TreatmentCard } from '@/components/cards';
 import { Chip, Empty, Kicker, PageTitle, Screen } from '@/components/ui';
-import { TREATMENTS } from '@/data/catalog';
+import { activeTreatments } from '@/data/catalog';
 import { useApp } from '@/context/store';
-import { modeSummary, zoneSummary } from '@/lib/labels';
+import { modeSummary } from '@/lib/labels';
 import { push } from '@/lib/nav';
 import type { TreatmentCategory } from '@/types/domain';
 
@@ -20,7 +20,7 @@ export default function CatalogScreen() {
   const { therapists } = useApp();
   const [filter, setFilter] = useState<(typeof FILTERS)[number]['id']>('all');
   const treatments = useMemo(
-    () => TREATMENTS.filter((treatment) => filter === 'all' || treatment.category === filter),
+    () => activeTreatments().filter((treatment) => filter === 'all' || treatment.category === filter),
     [filter],
   );
 
@@ -56,7 +56,7 @@ export default function CatalogScreen() {
         renderItem={({ item }) => (
           <TherapistRow
             therapist={item}
-            detail={`${modeSummary(item)} · ${zoneSummary(item.travelZones)}`}
+            detail={`${modeSummary(item)} · Every treatment · all barangays`}
             onPress={() => push(`/therapists/${item.id}`)}
           />
         )}

@@ -1,9 +1,10 @@
+import { Image } from 'expo-image';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { StatusPill, VerifyPill } from '@/components/status';
+import { StatusPill } from '@/components/status';
 import { Card } from '@/components/ui';
-import { font, lift, palette } from '@/constants/theme';
-import { CITY_NAME, getTreatment } from '@/data/catalog';
+import { lift, palette } from '@/constants/theme';
+import { getTreatment } from '@/data/catalog';
 import { useApp } from '@/context/store';
 import { formatDate, formatDuration, formatTime, peso } from '@/lib/format';
 import { CATEGORY_LABEL, MODE_LABEL, ratingLabel } from '@/lib/labels';
@@ -29,10 +30,7 @@ export function TreatmentCard({
   if (layout === 'circle') {
     return (
       <Pressable accessibilityRole="button" onPress={onPress} style={styles.circleWrap}>
-        <View style={[styles.orb, selected && styles.orbOn]}>
-          <Text style={styles.orbPrice}>{peso(from)}</Text>
-          <Text style={styles.orbMins}>{shortest} minutes</Text>
-        </View>
+        <Image source={treatment.image} contentFit="cover" style={[styles.orb, selected && styles.orbOn]} />
         <Text style={styles.circleName}>{treatment.name}</Text>
         <Text style={styles.viewDetails}>{actionLabel}</Text>
       </Pressable>
@@ -69,14 +67,21 @@ export function TherapistRow({
   return (
     <Card selected={selected} onPress={onPress}>
       <View style={styles.person}>
-        <View style={styles.avatar}>
-          <Text style={styles.avatarText}>{initials}</Text>
-        </View>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`View ${therapist.name}'s profile`}
+          onPress={() => push(`/therapists/${therapist.id}`)}>
+          {therapist.photo ? (
+            <Image source={therapist.photo} contentFit="cover" style={styles.avatar} />
+          ) : (
+            <View style={styles.avatar}>
+              <Text style={styles.avatarText}>{initials}</Text>
+            </View>
+          )}
+        </Pressable>
         <View style={styles.personCopy}>
-          <View style={styles.personTop}>
-            <Text style={styles.cardTitle}>{therapist.name}</Text>
-            <VerifyPill status={therapist.verification} />
-          </View>
+          <Text style={styles.cardTitle}>{therapist.name}</Text>
+          {therapist.verification === 'verified' ? <Text style={styles.muted}>Verified Hilotcare therapist</Text> : null}
           <Text style={styles.muted}>{therapist.title}</Text>
           <Text style={styles.price}>
             {ratingLabel(therapist)} · {therapist.years} years
@@ -105,7 +110,9 @@ export function VisitCard({ booking, highlight = false }: { booking: Booking; hi
         {formatDate(booking.date)} · {formatTime(booking.time)} · {formatDuration(booking.duration)}
       </Text>
       <Text style={styles.muted}>
-        {MODE_LABEL[booking.mode]} · {booking.city}, {CITY_NAME}
+        {MODE_LABEL[booking.mode]} · {booking.mode === 'clinic' && booking.address ? `${booking.address}, ` : ''}
+        {booking.barangay ? `${booking.barangay}, ` : ''}
+        {booking.city}
       </Text>
     </Card>
   );
@@ -121,6 +128,7 @@ const styles = StyleSheet.create({
     width: 128,
     height: 128,
     borderRadius: 64,
+    overflow: 'hidden',
     backgroundColor: palette.paper,
     alignItems: 'center',
     justifyContent: 'center',
@@ -128,8 +136,6 @@ const styles = StyleSheet.create({
     ...lift,
   },
   orbOn: { borderWidth: 2, borderColor: palette.orange },
-  orbPrice: { fontFamily: font.serif, color: palette.palm, fontSize: 22 },
-  orbMins: { color: palette.muted, fontSize: 12 },
   circleName: { color: palette.ink, fontWeight: '700', textAlign: 'center', fontSize: 14 },
   viewDetails: { color: palette.orange, fontWeight: '700', fontSize: 13 },
   person: { flexDirection: 'row', gap: 12, alignItems: 'flex-start' },

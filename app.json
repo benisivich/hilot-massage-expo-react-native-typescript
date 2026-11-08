@@ -27,13 +27,30 @@
     "plugins": [
       "expo-router",
       [
+        "expo-image-picker",
+        {
+          "photosPermission": "Hilotcare uses your photos so you can set a profile picture.",
+          "cameraPermission": false,
+          "microphonePermission": false
+        }
+      ],
+      "expo-sqlite",
+      [
+        "expo-notifications",
+        {
+          "color": "#3E6B45",
+          "defaultChannel": "bookings"
+        }
+      ],
+      [
         "expo-splash-screen",
         {
           "backgroundColor": "#F7F3EC",
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 76
         }
-      ]
+      ],
+      "expo-sharing"
     ],
     "experiments": {
       "typedRoutes": true,

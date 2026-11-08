@@ -1,9 +1,15 @@
 import { Tabs } from 'expo-router';
 
 import { AppIcon } from '@/components/icons';
+import { TherapistHold } from '@/components/therapist-hold';
 import { tabBar } from '@/constants/theme';
+import { useApp } from '@/context/store';
 
 export default function TherapistTabs() {
+  const { activeTherapist } = useApp();
+  if (activeTherapist && (activeTherapist.suspended || activeTherapist.verification !== 'verified')) {
+    return <TherapistHold therapist={activeTherapist} />;
+  }
   return (
     <Tabs
       screenOptions={{

@@ -4,6 +4,7 @@ import {
   Platform,
   Pressable,
   ScrollView,
+  type ScrollViewInstance,
   StyleSheet,
   Switch,
   Text,
@@ -14,7 +15,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppIcon } from '@/components/icons';
 import { font, lift, palette } from '@/constants/theme';
-import { BARANGAYS } from '@/data/catalog';
+import { activeBarangays } from '@/data/catalog';
 
 export function Seal({ size = 44 }: { size?: number }) {
   return (
@@ -51,7 +52,7 @@ export function Screen({
   tab?: boolean;
   scroll?: boolean;
   avoidKeyboard?: boolean;
-  scrollRef?: RefObject<ScrollView | null>;
+  scrollRef?: RefObject<ScrollViewInstance | null>;
 }) {
   const insets = useSafeAreaInsets();
   const body = (
@@ -251,7 +252,7 @@ export function BarangaySelect({
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
-  const matches = BARANGAYS.filter((barangay) => barangay.toLowerCase().includes(query.trim().toLowerCase()));
+  const matches = activeBarangays().filter((barangay) => barangay.toLowerCase().includes(query.trim().toLowerCase()));
   return (
     <View style={styles.field}>
       <Text style={styles.fieldLabel}>{label}</Text>

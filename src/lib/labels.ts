@@ -1,3 +1,4 @@
+import { activeTreatments } from '@/data/catalog';
 import type { PaymentStatus, PayMethod, ServiceMode, SessionStatus, Therapist, TreatmentCategory } from '@/types/domain';
 
 export const STATUS_LABEL: Record<SessionStatus, string> = {
@@ -5,8 +6,8 @@ export const STATUS_LABEL: Record<SessionStatus, string> = {
   confirmed: 'Confirmed',
   en_route: 'On the way',
   arrived: 'Arrived',
-  in_session: 'In session',
-  completed: 'Completed',
+  in_session: 'Checked in',
+  completed: 'Finished',
   cancelled: 'Cancelled',
 };
 
@@ -18,6 +19,7 @@ export const PAYMENT_LABEL: Record<PaymentStatus, string> = {
 };
 
 export const METHOD_LABEL: Record<PayMethod, string> = {
+  paypal: 'PayPal',
   gcash: 'GCash',
   maya: 'Maya',
   card: 'Card',
@@ -43,6 +45,14 @@ export function zoneSummary(zones: string[]) {
   if (zones.length === 0) return 'No travel zone yet';
   if (zones.length <= 2) return zones.join(', ');
   return `${zones.slice(0, 2).join(', ')} +${zones.length - 2}`;
+}
+
+export function serviceSummary(therapist: Pick<Therapist, 'treatmentIds'>) {
+  const catalog = activeTreatments();
+  const names = catalog.filter((treatment) => therapist.treatmentIds.includes(treatment.id)).map((treatment) => treatment.name);
+  if (names.length === 0) return 'No services selected';
+  if (names.length === catalog.length) return 'Every treatment';
+  return names.join(', ');
 }
 
 export function modeSummary(therapist: Pick<Therapist, 'offersHome' | 'offersClinic'>) {

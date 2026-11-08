@@ -10,11 +10,11 @@ export default function TherapistSessions() {
   const { bookings, activeTherapist } = useApp();
   const [done, setDone] = useState(false);
   const mine = bookings
-    .filter((booking) => booking.therapistId === activeTherapist?.id)
+    .filter((booking) => activeTherapist != null && booking.therapistId === activeTherapist.id)
     .filter((booking) =>
       done
-        ? booking.status === 'confirmed' || booking.status === 'completed' || booking.status === 'cancelled'
-        : booking.status === 'assigned',
+        ? booking.status === 'completed' || booking.status === 'cancelled'
+        : booking.status === 'assigned' || booking.status === 'confirmed' || booking.status === 'in_session',
     )
     .sort((a, b) => (sessionDate(a).getTime() - sessionDate(b).getTime()) * (done ? -1 : 1));
 
@@ -35,8 +35,8 @@ export default function TherapistSessions() {
         }
         ListEmptyComponent={
           <Empty
-            title={done ? 'No confirmed visits yet.' : 'No bookings yet.'}
-            body={done ? 'Confirmed visits show up here after you accept a payment.' : 'A visit is listed only after a customer books a session.'}
+            title={done ? 'No finished visits yet.' : 'No bookings yet.'}
+            body={done ? 'Finished and cancelled visits show up here.' : 'A visit is listed only after a customer books a session.'}
           />
         }
         renderItem={({ item }) => <VisitCard booking={item} />}

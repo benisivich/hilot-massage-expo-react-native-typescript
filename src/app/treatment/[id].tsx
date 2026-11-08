@@ -1,3 +1,4 @@
+import { Image } from 'expo-image';
 import { router, useLocalSearchParams } from 'expo-router';
 import { StyleSheet, Text, View } from 'react-native';
 
@@ -7,7 +8,7 @@ import { font, palette } from '@/constants/theme';
 import { getTreatment } from '@/data/catalog';
 import { useApp } from '@/context/store';
 import { formatDuration, peso } from '@/lib/format';
-import { CATEGORY_LABEL, modeSummary, zoneSummary } from '@/lib/labels';
+import { CATEGORY_LABEL, modeSummary } from '@/lib/labels';
 import { param, push } from '@/lib/nav';
 import { quoted } from '@/lib/rules';
 
@@ -24,7 +25,9 @@ export default function TreatmentScreen() {
     );
   }
 
-  const offeredBy = therapists.filter((therapist) => therapist.treatmentIds.includes(treatment.id));
+  const offeredBy = therapists.filter(
+    (therapist) => therapist.treatmentIds.includes(treatment.id) && therapist.verification === 'verified' && !therapist.suspended,
+  );
 
   return (
     <Screen
@@ -33,11 +36,11 @@ export default function TreatmentScreen() {
       onBack={() => router.back()}
       footer={<Button label="Book Now!" onPress={() => push(`/book?treatmentId=${treatment.id}`)} />}>
       <View style={styles.hero}>
-        <View style={styles.orb}>
-          <Text style={styles.orbPrice}>{peso(quoted(treatment, treatment.durationOptions[0] ?? 60).serviceTotal)}</Text>
-          <Text style={styles.orbMins}>{formatDuration(treatment.durationOptions[0] ?? 60)}</Text>
-        </View>
+        <Image source={treatment.image} contentFit="cover" style={styles.orb} />
         <Text style={styles.mark}>-{treatment.name}-</Text>
+        <Text style={styles.body}>
+          {peso(quoted(treatment, treatment.durationOptions[0] ?? 60).serviceTotal)} · {formatDuration(treatment.durationOptions[0] ?? 60)}
+        </Text>
       </View>
       <Text style={styles.body}>{treatment.description}</Text>
       <Kicker>Includes</Kicker>
@@ -54,14 +57,18 @@ export default function TreatmentScreen() {
         <Line key={minutes} label={formatDuration(minutes)} value={peso(quoted(treatment, minutes).serviceTotal)} />
       ))}
       <Kicker>Who offers it</Kicker>
-      {offeredBy.map((therapist) => (
-        <TherapistRow
-          key={therapist.id}
-          therapist={therapist}
-          detail={`${modeSummary(therapist)} · ${zoneSummary(therapist.travelZones)}`}
-          onPress={() => push(`/therapists/${therapist.id}`)}
-        />
-      ))}
+      {offeredBy.length === 0 ? (
+        <Text style={styles.body}>No therapist offers this service yet.</Text>
+      ) : (
+        offeredBy.map((therapist) => (
+          <TherapistRow
+            key={therapist.id}
+            therapist={therapist}
+            detail={modeSummary(therapist)}
+            onPress={() => push(`/therapists/${therapist.id}`)}
+          />
+        ))
+      )}
     </Screen>
   );
 }
@@ -72,13 +79,9 @@ const styles = StyleSheet.create({
     width: 180,
     height: 180,
     borderRadius: 90,
+    overflow: 'hidden',
     backgroundColor: palette.paper,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 4,
   },
-  orbPrice: { fontFamily: font.serif, color: palette.palm, fontSize: 28 },
-  orbMins: { color: palette.muted },
   mark: { fontFamily: font.serif, color: palette.palm, fontSize: 26, textAlign: 'center' },
   body: { color: palette.ink, fontSize: 15, lineHeight: 22 },
 });

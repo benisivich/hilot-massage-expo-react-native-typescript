@@ -1,20 +1,23 @@
 import { useState } from 'react';
 import { Alert, Text, View } from 'react-native';
 
-import { VerifyPill } from '@/components/status';
-import { Button, Chip, Field, Kicker, Notice, PageTitle, Screen } from '@/components/ui';
+import { ProfilePhoto } from '@/components/profile-photo';
+import { Button, Chip, Field, Notice, PageTitle, Screen } from '@/components/ui';
 import { palette } from '@/constants/theme';
-import { ISSUING_BODIES, TREATMENTS } from '@/data/catalog';
+import { CLINIC, CITY_NAME, activeTreatments } from '@/data/catalog';
 import { useApp } from '@/context/store';
-import { replace } from '@/lib/nav';
+import { push, replace } from '@/lib/nav';
 
 export default function TherapistProfile() {
-  const { activeTherapist, updateTherapist, submitVerification, approveVerification, setRole, resetDemo } = useApp();
-  const [licenseNumber, setLicenseNumber] = useState(activeTherapist?.licenseNumber ?? '');
-  const [issuingBody, setIssuingBody] = useState(activeTherapist?.issuingBody ?? '');
-  const [licenseValidUntil, setLicenseValidUntil] = useState(activeTherapist?.licenseValidUntil ?? '');
-  const [years, setYears] = useState(activeTherapist && activeTherapist.years > 0 ? String(activeTherapist.years) : '');
-  const [message, setMessage] = useState<string | null>(null);
+  const { activeTherapist, updateTherapist, setRole } = useApp();
+  const [draft, setDraft] = useState({
+    photo: activeTherapist?.photo ?? '',
+    name: activeTherapist?.name ?? '',
+    title: activeTherapist?.title ?? '',
+    years: activeTherapist && activeTherapist.years > 0 ? String(activeTherapist.years) : '',
+    bio: activeTherapist?.bio ?? '',
+    treatmentIds: activeTherapist?.treatmentIds ?? [],
+  });
 
   if (!activeTherapist) {
     return (
@@ -34,125 +37,99 @@ export default function TherapistProfile() {
 
   const therapist = activeTherapist;
 
-  const send = () => {
-    const result = submitVerification({ licenseNumber, issuingBody, licenseValidUntil });
-    const text = result.message ?? (result.ok ? 'Sent.' : 'Could not submit.');
-    setMessage(text);
-    Alert.alert(result.ok ? 'License saved' : 'Check the form', text);
-  };
-
-  const toggleTreatment = (id: string) => {
-    const next = therapist.treatmentIds.includes(id)
-      ? therapist.treatmentIds.filter((item) => item !== id)
-      : [...therapist.treatmentIds, id];
-    updateTherapist(therapist.id, { treatmentIds: next });
-  };
-
   return (
     <Screen tab>
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12 }}>
-        <PageTitle title="Profile" subtitle="These details are what clients see when they book." />
-        <VerifyPill status={therapist.verification} />
-      </View>
-      <Notice tone={therapist.verification === 'verified' ? 'good' : 'warn'}>{therapist.verificationNote}</Notice>
-      {therapist.reviewedAt ? <Text style={{ color: palette.muted }}>Last reviewed {therapist.reviewedAt}.</Text> : null}
+      <PageTitle
+        title="Profile"
+        subtitle="Change your details, then tap Save. New bookings appear under Visits."
+      />
+      <ProfilePhoto photo={draft.photo} name={draft.name} onChange={(photo) => setDraft((current) => ({ ...current, photo }))} />
+      <Notice tone="good">This account is verified. Hilotcare hires you, so clients can book you right away.</Notice>
       <Field label="Email" value={therapist.email} onChangeText={() => undefined} editable={false} />
       <Field
         label="Full name"
-        value={therapist.name}
-        onChangeText={(name) => updateTherapist(therapist.id, { name })}
+        value={draft.name}
+        onChangeText={(name) => setDraft((current) => ({ ...current, name }))}
         placeholder="Your name"
       />
       <Field
         label="Title"
-        value={therapist.title}
-        onChangeText={(title) => updateTherapist(therapist.id, { title })}
+        value={draft.title}
+        onChangeText={(title) => setDraft((current) => ({ ...current, title }))}
         placeholder="Hilot therapist"
       />
       <Field
         label="Years in practice"
-        value={years}
-        onChangeText={(value) => {
-          const digits = value.replace(/\D/g, '').slice(0, 2);
-          setYears(digits);
-          updateTherapist(therapist.id, { years: digits ? Number(digits) : 0 });
-        }}
+        value={draft.years}
+        onChangeText={(value) => setDraft((current) => ({ ...current, years: value.replace(/\D/g, '').slice(0, 2) }))}
         keyboardType="number-pad"
         placeholder="0"
       />
       <Field
         label="Bio"
-        value={therapist.bio}
-        onChangeText={(bio) => updateTherapist(therapist.id, { bio })}
+        value={draft.bio}
+        onChangeText={(bio) => setDraft((current) => ({ ...current, bio }))}
         placeholder="Tell clients how you work"
         multiline
       />
-      <Kicker>Services you offer</Kicker>
+      <Text style={{ color: palette.ink, fontWeight: '700' }}>Services you offer</Text>
+      <Text style={{ color: palette.muted, lineHeight: 20 }}>
+        Turn a service on so clients can book you for it. Every new account starts with all services on.
+      </Text>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-        {TREATMENTS.map((treatment) => (
-          <Chip
-            key={treatment.id}
-            label={treatment.name}
-            selected={therapist.treatmentIds.includes(treatment.id)}
-            onPress={() => toggleTreatment(treatment.id)}
-          />
-        ))}
+        {activeTreatments().map((treatment) => {
+          const selected = draft.treatmentIds.includes(treatment.id);
+          return (
+            <Chip
+              key={treatment.id}
+              label={treatment.name}
+              selected={selected}
+              onPress={() =>
+                setDraft((current) => ({
+                  ...current,
+                  treatmentIds: selected
+                    ? current.treatmentIds.filter((id) => id !== treatment.id)
+                    : [...current.treatmentIds, treatment.id],
+                }))
+              }
+            />
+          );
+        })}
       </View>
-      <Field label="License number" value={licenseNumber} onChangeText={setLicenseNumber} placeholder="Enter your license number" />
-      <Kicker>Issuing body</Kicker>
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-        {ISSUING_BODIES.map((body) => (
-          <Chip key={body} label={body.replace(' — ', ' ')} selected={issuingBody === body} onPress={() => setIssuingBody(body)} />
-        ))}
-      </View>
-      <Field
-        label="Valid until"
-        value={licenseValidUntil}
-        onChangeText={setLicenseValidUntil}
-        placeholder="YYYY-MM-DD"
-        hint="Use the expiry printed on the credential."
-      />
-      {message ? <Notice tone={message.startsWith('License') ? 'good' : 'bad'}>{message}</Notice> : null}
+      <Notice tone="info">
+        {`Clinic visits are at ${CLINIC.name}, ${CLINIC.address}, ${CLINIC.city}, ${CITY_NAME}. Clients who choose Clinic use this address automatically.`}
+      </Notice>
       <Button
-        label="Submit credentials"
+        label="Save"
         onPress={() => {
-          if (therapist.verification === 'verified') {
-            Alert.alert(
-              'Send this license back to review?',
-              'You will not appear for new bookings until it is approved again.',
-              [
-                { text: 'Cancel', style: 'cancel' },
-                { text: 'Submit', onPress: send },
-              ],
-            );
+          const name = draft.name.trim();
+          if (name.length < 2) {
+            Alert.alert('Check the form', 'Enter your full name.');
             return;
           }
-          send();
+          void updateTherapist(therapist.id, {
+            photo: draft.photo,
+            name,
+            title: draft.title.trim(),
+            years: draft.years ? Number(draft.years) : 0,
+            bio: draft.bio.trim(),
+            treatmentIds: draft.treatmentIds,
+          }).then((result) => {
+            if (!result.ok) {
+              Alert.alert('Not saved', result.message);
+              return;
+            }
+            setDraft((current) => ({ ...current, name, title: draft.title.trim(), bio: draft.bio.trim() }));
+            Alert.alert('Saved', 'Your title, bio, years, and photo are saved.');
+          });
         }}
       />
-      {therapist.verification === 'pending' ? (
-        <Button
-          label="Approve license"
-          variant="secondary"
-          onPress={() => {
-            approveVerification();
-            setMessage('License approved. Clients can book you.');
-          }}
-        />
-      ) : null}
+      <Button label="Report a problem" variant="secondary" onPress={() => push('/complaint')} />
       <Button
         label="Log out"
         variant="secondary"
         onPress={() => {
           setRole(null);
-          replace('/');
-        }}
-      />
-      <Button
-        label="Reset demo data"
-        variant="danger"
-        onPress={() => {
-          resetDemo();
           replace('/');
         }}
       />

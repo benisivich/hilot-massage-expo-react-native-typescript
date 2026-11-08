@@ -1,6 +1,6 @@
-export type Role = 'customer' | 'therapist';
+export type Role = 'customer' | 'therapist' | 'admin';
 
-export type PayMethod = 'gcash' | 'maya' | 'card';
+export type PayMethod = 'paypal' | 'gcash' | 'maya' | 'card';
 
 export type VerificationStatus = 'unverified' | 'pending' | 'verified' | 'rejected';
 
@@ -30,6 +30,10 @@ export type Treatment = {
   packagePrices: Record<number, number>;
   focus: string[];
   caution?: string;
+  image: number;
+  active?: boolean;
+  offersHome?: boolean;
+  offersClinic?: boolean;
 };
 
 export type Clinic = {
@@ -42,6 +46,7 @@ export type Therapist = {
   id: string;
   name: string;
   email: string;
+  photo: string;
   title: string;
   bio: string;
   years: number;
@@ -59,6 +64,9 @@ export type Therapist = {
   clinic: Clinic | null;
   travelZones: string[];
   weeklySlots: Record<string, string[]>;
+  suspended: boolean;
+  validId: string;
+  certificate: string;
 };
 
 export type Customer = {
@@ -66,8 +74,28 @@ export type Customer = {
   name: string;
   mobile: string;
   email: string;
+  photo: string;
   city: string;
+  barangay: string;
   address: string;
+  suspended: boolean;
+};
+
+export type AdminAccount = {
+  id: string;
+  name: string;
+  email: string;
+};
+
+export type Complaint = {
+  id: string;
+  authorId: string;
+  authorRole: 'customer' | 'therapist';
+  authorName: string;
+  againstId: string;
+  body: string;
+  status: 'open' | 'reviewed';
+  createdAt: string;
 };
 
 export type Booking = {
@@ -78,6 +106,7 @@ export type Booking = {
   treatmentId: string;
   mode: ServiceMode;
   city: string;
+  barangay: string;
   address: string;
   date: string;
   time: string;
@@ -139,4 +168,5 @@ export type NewBookingInput = {
   cardNumber: string;
   cardExpiry: string;
   cardCvc: string;
+  paypalOrderId?: string;
 };
